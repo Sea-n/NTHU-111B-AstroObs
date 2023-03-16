@@ -1,62 +1,49 @@
 from astropy.io import fits
+from glob import glob
 import numpy as np
+import re
 
 
 def main():
-    target = 'M82'
-    duration = '60'
+    pattern = re.compile(r'light/(\d+)\-([^-]+)\-(\d+)(\D+)(\d+s)\.[fits]+')
+    files = list({pattern.match(f).groups() for f in glob('light/*.fits')})
 
-    for band in ['b']:
-        frames = []
-        for seq in range(3):
-            filename = f'{target}-{seq+1:03}{band}{duration}s.fits'
-            frames.append(np.array(fits.open(filename)[0].section[:]))
-        frames = np.array(frames)
-        print(f'{band = }\n{seq = }\n{frames = }')
-        frame = np.median(frames, 0)
-        frame = darkflat(band, duration, frame)
-        frame = fits.HDUList([fits.PrimaryHDU(frame)])
-        frame.writeto(f'{target}-final-{band}{duration}s.fits')
+    print('## Processing darks...')
+    darks = {d: fits_avg(f'dark/{d}/*.fts') for d in {i[4] for i in files}}
+    print('## Processing flats...')
+    flats = {f'{d}_{b}': fits_avg(f'flat/{d}/{b}/*.fts')
+             for (d, b) in {(i[0], i[3]) for i in files}}
+
+    lights = {}
+    for f in glob('light/*.fits'):  # For all file again
+        [date, target, seq, band, dura] = pattern.match(f).groups()
+        print(f'processing {target=}, {band=}, {dura=}, {seq=}')
+
+        light = fits_avg(f)
+        dark = darks[dura]
+        flat = flats[f'{date}_{band}']
+
+        frame = (light - dark) / flat * np.percentile(flat, 3)
+        lights.setdefault(f'{target}-{band}-{dura}-{date}', {})[seq] = frame
+
+    print('## Normalizing...')
+    for target, frames in lights.items():
+        p = {seq: np.percentile(frame, 50) for seq, frame in frames.items()}
+        for seq, frame in frames.items():
+            frame = frame / p[seq] * np.mean(list(p.values()))
+            frame = fits.HDUList([fits.PrimaryHDU(frame)])
+            frame.writeto(f'clear/{target}-{seq}.fits', overwrite=True)
 
 
-def darkflat(band, duration, frame):
-    frames = []
-    for seq in range(10):
-        filename = f'dark-{duration}s-{seq+1:03}.fits'
-        frames.append(np.array(fits.open(filename)[0].section[:]))
+def fits_avg(frame_list):
+    frame_list = glob(frame_list)
+    frames = [np.array(fits.open(f)[0].section[:]) for f in frame_list]
     frames = np.array(frames)
+    if len(frame_list) < 5:
+        return np.median(frames, 0)
     mean = frames.mean(0)
     stddev = frames.std(0)
-    dark = np.nanmean([nan_if(f, mean, stddev) for f in frames], 0)
-    print(f'{dark = }')
-
-    frames = []
-    for seq in range(5):
-        filename = f'flat-{seq+1:03}{band}.fits'
-        frames.append(np.array(fits.open(filename)[0].section[:]))
-    frames = np.array(frames)
-    mean = frames.mean(0)
-    stddev = frames.std(0)
-    flat = np.nanmean([nan_if(f, mean, stddev) for f in frames], 0)
-    print(f'{flat = }')
-
-    frames = []
-    for seq in range(10):
-        filename = f'bias-{seq+1:03}.fits'
-        frames.append(np.array(fits.open(filename)[0].section[:]))
-    frames = np.array(frames)
-    mean = frames.mean(0)
-    stddev = frames.std(0)
-    bias = np.nanmean([nan_if(f, mean, stddev) for f in frames], 0)
-    print(f'{bias = }')
-
-    print(f'{np.max(frame) = }')
-    frame = (frame - dark) / (flat - bias)
-    for k in range(10):
-        frame1 = frame * np.percentile(flat, k)
-        print(f'{k = }, {np.max(frame1) = }')
-
-    return frame
+    return np.nanmean([nan_if(f, mean, stddev) for f in frames], 0)
 
 
 def nan_if(arr, mean, std):
