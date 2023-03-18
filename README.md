@@ -1,15 +1,15 @@
-# 111B 基礎天文觀測
-
-Fundamentals of Observational Astronomy
-
 ## FITS file processer
 
 Convert light (source images) to aligned frames.
 
+Fundamentals of Observational Astronomy (基礎天文觀測)
+
 ## Directory Structure
 ```
 Repo
-├── main.py  * program file
+├── align.py
+├── merge.py
+├── requirements.txt
 │
 ├── bias/
 │   ├── Bias-20230310@213102-000S.fts
@@ -24,7 +24,7 @@ Repo
 │   │   ├── V/
 │   │   ├── R/
 │   │   └── Ha/
-│   └── 20230311
+│   └── 20230311/
 │
 ├── light/
 │   ├── 20230310-NGC3338-001B300s.fits
@@ -39,9 +39,16 @@ Repo
 ├── normalized/
 │   ├── NGC3338-20230310-B-300s-001.fits
 │   └── * Adjust brightness for every (target, date)
-└── aligned/
-    ├── NGC3338-20230310-B-300s-001.fits
-    └── * Align frame for every (target, date)
+│── aligned/
+│   ├── NGC3338-20230310-B-300s-001.fits
+│   └── * Align frame for every (target, date)
+│
+└── merged/
+    ├── NGC3338-20230310-B.fits
+    ├── NGC3338-20230310-R.fits
+    ├── NGC3338-20230310-V.fits
+    ├── NGC3338-20230310-preview.png
+    └── * Final artifact
 ```
 
 ## Usage
@@ -49,7 +56,8 @@ Repo
 ```bash
 mkdir calibrated/ normalized/ aligned/
 pip3 install -r requirements.txt
-python3 main.py
+python3 align.py
+python3 merge.py
 ```
 
 ## Contact

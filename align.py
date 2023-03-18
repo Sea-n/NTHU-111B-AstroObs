@@ -27,9 +27,8 @@ def main():
                         * np.percentile(flat, 3), 0, 262144)
         lights.setdefault(f'{target}-{date}', {}
                           )[f'{band}-{dura}-{seq}'] = frame
-        frame = fits.HDUList([fits.PrimaryHDU(frame)])
-        frame.writeto(f'calibrated/{target}-{date}-{band}-{dura}-{seq}.fits',
-                      overwrite=True)
+        save_fits(frame,
+                  f'calibrated/{target}-{date}-{band}-{dura}-{seq}.fits')
 
     print('## Normalize brightness...')
     for target, frames in lights.items():
@@ -37,8 +36,7 @@ def main():
         print(f'processing {target} (len = {len(frames)})')
         for key, frame in frames.items():
             lights[target][key] = frame / p[key] * np.mean(list(p.values()))
-            frame = fits.HDUList([fits.PrimaryHDU(lights[target][key])])
-            frame.writeto(f'normalized/{target}-{key}.fits', overwrite=True)
+            save_fits(lights[target][key], f'normalized/{target}-{key}.fits')
 
     print('## Aligning frames...')
     for target, frames in lights.items():
@@ -58,8 +56,7 @@ def main():
             print(f'{f=}\t{d:.2f}\t({ox}, {oy})')
             aligned = np.zeros((2240, 2240))
             aligned[96+ox:2144+ox, 96+oy:2144+oy] = frames[f]
-            aligned = fits.HDUList([fits.PrimaryHDU(aligned)])
-            aligned.writeto(f'aligned/{target}-{f}.fits', overwrite=True)
+            save_fits(aligned, f'aligned/{target}-{f}.fits')
 
 
 def align_frame(f0, f1):
@@ -71,31 +68,29 @@ def align_frame(f0, f1):
             d = np.mean(np.abs(sample))
             if d < best[0]:
                 best = [d, ox, oy]
-    [d, ox, oy] = best
+    if abs(best[1]) < 12 and abs(best[2]) < 12:
+        return best
 
-    if abs(ox) > 12 or abs(oy) > 12:
-        best = [1e9, 0, 0]
-        for ox in range(-30, 30):
-            for oy in range(-30, 30):
-                sample = (f0[600+ox:1400+ox, 600+oy:1400+oy] -
-                          f1[600:1400, 600:1400])
-                d = np.mean(np.abs(sample))
-                if d < best[0]:
-                    best = [d, ox, oy]
-        [d, ox, oy] = best
+    best = [1e9, 0, 0]
+    for ox in range(-30, 30):
+        for oy in range(-30, 30):
+            sample = (f0[600+ox:1400+ox, 600+oy:1400+oy] -
+                      f1[600:1400, 600:1400])
+            d = np.mean(np.abs(sample))
+            if d < best[0]:
+                best = [d, ox, oy]
+    if abs(best[1]) < 24 and abs(best[2]) < 24:
+        return best
 
-    if abs(ox) > 24 or abs(oy) > 24:
-        best = [1e9, 0, 0]
-        for ox in range(-60, 60):
-            for oy in range(-60, 60):
-                sample = (f0[600+ox:1400+ox, 600+oy:1400+oy] -
-                          f1[600:1400, 600:1400])
-                d = np.mean(np.abs(sample))
-                if d < best[0]:
-                    best = [d, ox, oy]
-        [d, ox, oy] = best
-
-    return [d, ox, oy]
+    best = [1e9, 0, 0]
+    for ox in range(-60, 60):
+        for oy in range(-60, 60):
+            sample = (f0[600+ox:1400+ox, 600+oy:1400+oy] -
+                      f1[600:1400, 600:1400])
+            d = np.mean(np.abs(sample))
+            if d < best[0]:
+                best = [d, ox, oy]
+    return best
 
 
 def load_fits(frame_list):
@@ -109,6 +104,11 @@ def load_fits(frame_list):
     mean = frames.mean(0)
     stddev = frames.std(0)
     return np.nanmean([nan_if(f, mean, stddev) for f in frames], 0)
+
+
+def save_fits(frame, filename):
+    frame = fits.HDUList([fits.PrimaryHDU(frame)])
+    frame.writeto(filename, overwrite=True)
 
 
 def nan_if(arr, mean, std):
