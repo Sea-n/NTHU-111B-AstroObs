@@ -54,7 +54,7 @@ Repo
 ## Usage
 
 ```bash
-mkdir calibrated/ normalized/ aligned/
+mkdir calibrated/ normalized/ aligned/ merged/
 pip3 install -r requirements.txt
 python3 align.py
 python3 merge.py

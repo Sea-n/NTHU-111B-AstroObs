@@ -5,23 +5,24 @@ import re
 
 
 def main():
-    pattern = re.compile(r'light/(\d+)\-([^-]+)\-(\d+)(\D+)(\d+s)\.[fits]+')
-    files = list({pattern.match(f).groups() for f in glob('light/*.fits')})
+    pattern = re.compile(r'light/(\d+)_([^_]+)_\-(\d+)_(\D+)_(\d+m)\.[fits]+')
+    files = list({pattern.match(f).groups() for f in glob('light/*.fit')})
 
     print('## Processing darks...')
-    darks = {d: load_fits(f'dark/{d}/*.fts') for d in {i[4] for i in files}}
+    darks = {dura: load_fits(f'dark/*_Dark_{dura}-*.fit')
+             for dura in {i[4] for i in files}}
     print('## Processing flats...')
-    flats = {f'{d}_{b}': load_fits(f'flat/{d}/{b}/*.fts')
-             for (d, b) in {(i[0], i[3]) for i in files}}
+    flats = {band: load_fits(f'flat/*_Flat_{band}-*.fit')
+             for band in {i[3] for i in files}}
 
     lights = {}
-    for f in glob('light/*.fits'):
+    for f in glob('light/*.fit'):
         [date, target, seq, band, dura] = pattern.match(f).groups()
         print(f'processing {target=}, {date=}, {band=}, {dura=}, {seq=}')
 
         light = load_fits(f)
         dark = darks[dura]
-        flat = flats[f'{date}_{band}']
+        flat = flats[band]
 
         frame = np.clip((light - dark) / flat
                         * np.percentile(flat, 3), 0, 262144)
@@ -29,6 +30,13 @@ def main():
                           )[f'{band}-{dura}-{seq}'] = frame
         save_fits(frame,
                   f'calibrated/{target}-{date}-{band}-{dura}-{seq}.fits')
+
+    """
+    lights = {}
+    for f in glob('calibrated/*.fits'):
+        target, key = f[11:-5].split('-', 1)
+        lights.setdefault(target, {})[key] = load_fits(f)
+    """
 
     print('## Normalize brightness...')
     for target, frames in lights.items():
@@ -44,7 +52,7 @@ def main():
 
         key = None
         for k in frames.keys():
-            if 'V' in k and '-002' in k:
+            if 'V' in k and '-003' in k:
                 key = k
         if not key:
             key = list(frames.keys())[0]
@@ -54,8 +62,8 @@ def main():
             [d, ox, oy] = align_frame(frames[key], frames[f])
 
             print(f'{f=}\t{d:.2f}\t({ox}, {oy})')
-            aligned = np.zeros((2240, 2240))
-            aligned[96+ox:2144+ox, 96+oy:2144+oy] = frames[f]
+            aligned = np.zeros((4567, 6024))
+            aligned[96+ox:96+4375+ox, 96+oy:96+5832+oy] = frames[f]
             save_fits(aligned, f'aligned/{target}-{f}.fits')
 
 
@@ -94,6 +102,7 @@ def align_frame(f0, f1):
 
 
 def load_fits(frame_list):
+    print(f'load_fits({frame_list = }):')
     frame_list = glob(frame_list)
     frames = [np.array(fits.open(f)[0].section[:]) for f in frame_list]
     frames = np.array(frames)
